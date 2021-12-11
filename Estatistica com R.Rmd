@@ -1,0 +1,260 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+
+# Filtrando apenas os dados do Estado de São Paulo
+enem_sp_2019 <- MICRODADOS_ENEM_2019 %>% filter(SG_UF_RESIDENCIA =="SP")
+
+# Selecionando as colunas de interesse
+enem_sp_2019 <- select(enem_sp_2019, NU_INSCRICAO, NU_ANO, NO_MUNICIPIO_RESIDENCIA,
+                       SG_UF_RESIDENCIA, NU_IDADE, TP_SEXO, TP_ESTADO_CIVIL, TP_COR_RACA,
+                       TP_NACIONALIDADE, TP_ESCOLA, TP_ENSINO, IN_TREINEIRO, CO_ESCOLA,
+                       TP_PRESENCA_CN, TP_PRESENCA_CH, TP_PRESENCA_LC, TP_PRESENCA_MT,
+                       NU_NOTA_CN, NU_NOTA_CH, NU_NOTA_LC, NU_NOTA_MT, TP_LINGUA,
+                       TP_STATUS_REDACAO, NU_NOTA_COMP1, NU_NOTA_COMP2, NU_NOTA_COMP3,
+                       NU_NOTA_COMP4, NU_NOTA_COMP5, NU_NOTA_REDACAO)
+
+# EXCLUIR UMA COLUNA
+enem_sp_2019$NU_ANO <- NULL
+
+# EXCLUIR VÁRIAS COLUNAS
+excluir <- c("TP_ESTADO_CIVIL", "SG_UF_RESIDENCIA")
+View (excluir)
+
+enem_sp_2019 <- enem_sp_2019[  , !(names(enem_sp_2019) %in% excluir)]
+
+View(names(enem_sp_2019))
+# %in% verifica a intersecção em duas listas ou vetores.
+
+
+#RENOMEAR UMA COLUNA
+enem_sp_2019 <- rename(enem_sp_2019, NOTA_COMP1 = NU_NOTA_COMP1)
+
+#RENOMEAR VÁRIAS COLUNAS
+enem_sp_2019 <- rename(enem_sp_2019, NOTA_COMP2 = NU_NOTA_COMP2, NOTA_COMP3 = NU_NOTA_COMP3,
+                   NOTA_COMP4 = NU_NOTA_COMP4,NOTA_COMP5 = NU_NOTA_COMP5,
+                   NOTA_REDACAO = NU_NOTA_REDACAO, NOTA_CN = NU_NOTA_CN,
+                   NOTA_CH = NU_NOTA_CH, NOTA_LC = NU_NOTA_LC, NOTA_MT = NU_NOTA_MT)
+#Verifica toda as variaveis
+str(enem_sp_2019)
+
+#transformando a variavel código escola em fator
+enem_sp_2019$CO_ESCOLA <- as.factor(enem_sp_2019$CO_ESCOLA)
+
+#Verificando valores missing(Ausentes)
+# NA = valores ausentes pode ser faltas ou desclassificação
+#NAN = not a number(Valor indefinido)
+
+sapply(enem_sp_2019, function(x) sum(is.na(x)))
+sapply(enem_sp_2019, function(x) sum(is.nan(x)))
+
+```
+
+TREINEIROS
+
+```{r}
+treineiros <- enem_sp_2019 %>% filter(IN_TREINEIRO ==1 )#Mostra o total de treineiros
+
+#Retirar treineiros
+vestibulandos <- enem_sp_2019 %>% filter(IN_TREINEIRO==0)
+
+#Excluir a coluna dos vestibulandos nos treineiros
+vestibulandos$IN_TREINEIRO <- NULL
+
+#Exportando o arquivo treineiros
+write.table(treineiros, file = "treineiros.csv", sep = ",")
+
+#Criando coluna para classificar as presenças
+vestibulandos["PRESENCA"] <- vestibulandos$TP_PRESENCA_CN + vestibulandos$TP_PRESENCA_CH +
+  vestibulandos$TP_PRESENCA_LC + vestibulandos$TP_PRESENCA_MT
+
+falta_2dias <- vestibulandos %>% filter(PRESENCA==0)#Não foi nos 2 dias
+falta_1dia <- vestibulandos %>% filter(PRESENCA==2)#Não foi 1 dia
+desclas <- vestibulandos %>% filter(PRESENCA==6)#desclassificados
+desclas2_vezes <- vestibulandos %>% filter(PRESENCA==8)#Não foi nos 2 dias
+
+#Selecionando apenas os que compareceram nos dois dias
+vestibulandos_presentes <- vestibulandos %>% filter(PRESENCA==4)
+```
+
+TRATANDO VALORES MISSING
+
+```{r}
+#Verificando valores missing
+sapply(vestibulandos_presentes, function(x)sum(is.na(x)))
+
+#Excluindo valores missing
+vestibulandos_presentes <- drop_na(vestibulandos_presentes, NOTA_MT)
+sapply(vestibulandos_presentes, function(x)sum(is.na(x)))
+
+#VERIFICANDO NOTAS ZERO
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_REDACAO ==0)#9181 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_COMP1 ==0)#9188 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_COMP2 ==0)#9181 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_COMP3 ==0)#9197 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_COMP4 ==0)#9194 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_COMP5 ==0)#73333 notas zeros
+
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_MT ==0)#56 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_CH ==0)#343 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_CN ==0)#36 notas zeros
+nota_zero <- vestibulandos_presentes %>% filter(NOTA_LC ==0)#135 notas zeros
+
+#Redacao sem problemas
+redacao_sem_prob <- vestibulandos_presentes %>% filter(TP_STATUS_REDACAO == 1)
+
+#Excluir coluna presenca
+vestibulandos_presentes$PRESENCA <- NULL
+
+#EXPORTAR ARQUIVO TRATADO
+write.table(vestibulandos_presentes, file = "enem2019_tratado.csv", sep = ",")
+```
+
+AMOSTRAGEM
+
+```{r}
+#Abrir o arquivo
+enem2019_tratado <- read.csv("enem2019_tratado.csv", sep = ",")
+view(enem2019_tratado)
+
+#Amostragem aleatoria simples em campinas
+enem_campinas <- enem2019_tratado %>% filter(NO_MUNICIPIO_RESIDENCIA == "Campinas")
+
+# CRIANDO AMOSTRAS ALEATÓRIAS
+set.seed(1) # comando permite não alterar a aleatoriedade qdo processar mais de uma vez.
+amostra <- sample(c(0,1), 13199, replace = TRUE, prob=c(0.8,0.2))
+summary(as.factor(amostra))
+prop.table(table(amostra))
+
+amostracampinas <- enem_campinas[amostra==1,  ]
+dim(amostracampinas)
+
+#Amostragem sistematica no R
+set.seed(2)
+amostra <- S.SY(13199,100)
+amostra
+dim(amostra)
+
+#Amostragem em campinas
+enem_campinas <- enem2019_tratado %>% filter(NO_MUNICIPIO_RESIDENCIA == "Campinas")
+
+#Relacionando com enem campinas
+amostracampinas2 <- enem_campinas[amostra,]
+
+#### AMOSTRAGEM ESTRATIFICADA ######
+
+# AMOSTRAGEM EM CAMPINAS
+enem_campinas <- enem2019_tratado %>% filter(NO_MUNICIPIO_RESIDENCIA=="Campinas")
+
+
+#AMOSTRAGEM ESTRATIFICADA EM CAMPINAS POR RAÇA
+summary(as.factor(enem_campinas$TP_COR_RACA))
+prop.table(table(enem_campinas$TP_COR_RACA))
+
+#ALTERANDO NÚMERO PELA RAÇA
+enem_campinas$TP_COR_RACA[enem_campinas$TP_COR_RACA==0] <- "Não definido"
+enem_campinas$TP_COR_RACA[enem_campinas$TP_COR_RACA==1] <- "Branca"
+enem_campinas$TP_COR_RACA[enem_campinas$TP_COR_RACA==2] <- "Preta"
+enem_campinas$TP_COR_RACA[enem_campinas$TP_COR_RACA==3] <- "Parda"
+enem_campinas$TP_COR_RACA[enem_campinas$TP_COR_RACA==4] <- "Amarela"
+enem_campinas$TP_COR_RACA[enem_campinas$TP_COR_RACA==5] <- "Indígena
+
+
+````
+
+```{r}
+#UTILIZANDO APROXIMADAMENTE 10% DE CADA COR/RAÇA (ESTRATO)
+#Cuidado com a ordem! Fazer a análise antes.
+ordem_amostras <- strata(data=enem_campinas,
+                        stratanames=c("TP_COR_RACA"),size=c(1, 2, 3, 4, 5, 6),method="srswor")
+summary(as.factor(ordem_amostras$TP_COR_RACA))
+summary(as.factor(enem_campinas$TP_COR_RACA))
+
+amostracampinas3 <- strata(data=enem_campinas,
+               stratanames=c("TP_COR_RACA"),size=c(751, 365, 151, 21, 5, 28), method="srswor")
+#srswor: amostra simples sem reposição
+#srswr: com reposição
+summary(as.factor(amostracampinas3$TP_COR_RACA))
+
+###  AMOSTRAGEM POR CONGLOMERADO (AGRUPAMENTO)  ###
+#Verificando alunos de escola pública
+escolas_publicas <- enem_campinas %>% filter(TP_ESCOLA == 2)
+
+#Verificando alunos de escola particular
+escolas_particulares <- enem_campinas %>% filter(TP_ESCOLA == 3)
+
+```
+
+Estatistica Descritiva
+```{r}
+enem2019_tratado <- read.csv("enem2019_tratado.csv", sep = ",")
+
+#Pegar o municipio de Sorocaba
+enem_sorocaba <- enem2019_tratado %>% filter(NO_MUNICIPIO_RESIDENCIA == "Sorocaba")
+
+#Tabela de frequencia absoluta
+freq_abs <- table(enem_sorocaba$NU_IDADE)
+view(freq_abs)
+
+#Tabela de frequencia relativa
+freq_rel <- prop.table(freq_abs)
+view(freq_rel)
+
+#Porcentagem da frequencia relativa
+p_freq_rel <- 100 * prop.table(freq_rel)
+view(p_freq_rel)
+
+# Criar uma linha com o total
+freq_abs <- c(freq_abs, sum(freq_abs)) 
+View(freq_abs)
+names(freq_abs)[54] <- "Total"
+View(freq_abs)
+
+# Juntando a frequência relativa e a frequência percentual com suas respectivas somas.
+freq_rel <- c(freq_rel, sum(freq_rel))
+p_freq_rel <- c(p_freq_rel, sum(p_freq_rel))
+
+# Tabela final com todos os valores
+tabela_final <- cbind(freq_abs, 
+                      freq_rel = round(freq_rel, digits = 5), 
+                      p_freq_rel = round(p_freq_rel, digits = 2))
+View(tabela_final)
+
+
+#CONSTRUINDO CLASSES DE FREQUÊNCIAS
+intervalo_classes <- seq(10,75,5)
+View(intervalo_classes)
+tabela_classes <- table(cut(enem_sorocaba$NU_IDADE, breaks=intervalo_classes, right=FALSE))
+View(tabela_classes)
+
+#Tirando a média
+mean(enem2019_tratado$NOTA_MT)
+
+#Tirando a mediana
+median(enem2019_tratado$NOTA_MT)
+
+#MODA
+moda <- function(v) {
+  valor_unico <- unique(v) #Busca o valor único para a coluna valor
+  valor_unico[which.max(tabulate(match(v,valor_unico)))]
+}
+#Obtendo a moda
+resultado <- moda(enem2019_tratado$NOTA_MT) 
+
+#HISTOGRAMA
+#Análise matemática
+hist(enem2019_tratado$NOTA_MT, probability=T, col="blue")
+lines(density(enem2019_tratado$NOTA_MT) , col="red")
+
+
+#Análise Redação
+hist(enem2019_tratado$NOTA_REDACAO, probability=T, col="blue")
+lines(density(enem2019_tratado$NOTA_REDACAO) , col="red")
+
+
+
+
+```
+
